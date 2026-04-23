@@ -1,0 +1,1 @@
+"""Spotify CLI application package."""
