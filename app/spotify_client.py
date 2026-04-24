@@ -1,5 +1,8 @@
 import base64
+import http.server
 import json
+import socketserver
+import threading
 import time
 import webbrowser
 from typing import Any
@@ -63,6 +66,18 @@ class SpotifyClient:
     def get_current_user(self) -> dict[str, Any]:
         if self._current_user is None:
             self._current_user = self._request("GET", "/me")
+        return self._current_user
+
+    def get_current_user_if_authenticated(self) -> dict[str, Any] | None:
+        """Return the current user only when a local session exists."""
+        if self._current_user is not None:
+            return self._current_user
+        if not self._token_data:
+            return None
+        try:
+            self._current_user = self._request("GET", "/me")
+        except (AuthenticationError, SpotifyAPIError):
+            return None
         return self._current_user
 
     def create_playlist(self, name: str, description: str = "") -> dict[str, Any]:
@@ -195,6 +210,8 @@ class SpotifyClient:
             return self._token_data["access_token"]
 
         self._authenticate_user()
+        if not self._token_data:
+            raise AuthenticationError("No se pudo completar la autenticacion con Spotify.")
         return self._token_data["access_token"]
 
     def _authenticate_user(self) -> None:
@@ -202,10 +219,13 @@ class SpotifyClient:
         print("\nSe abrira el navegador para autorizar el acceso a Spotify.")
         print("Si no se abre automaticamente, copia esta URL en tu navegador:")
         print(auth_url)
-        webbrowser.open(auth_url)
-
-        redirected_url = input("\nPega aqui la URL final despues de autorizar la aplicacion: ").strip()
-        code = self._extract_authorization_code(redirected_url)
+        auto_code = self._wait_for_authorization_code(auth_url)
+        if auto_code:
+            code = auto_code
+        else:
+            webbrowser.open(auth_url)
+            redirected_url = input("\nPega aqui la URL final despues de autorizar la aplicacion: ").strip()
+            code = self._extract_authorization_code(redirected_url)
         payload = {
             "grant_type": "authorization_code",
             "code": code,
@@ -213,6 +233,87 @@ class SpotifyClient:
         }
         self._token_data = self._request_token(payload)
         self._save_token_cache(self._token_data)
+
+    def _wait_for_authorization_code(self, auth_url: str) -> str | None:
+        parsed_redirect = urlparse(self.config.spotify_redirect_uri)
+        if parsed_redirect.scheme != "http":
+            return None
+        if parsed_redirect.hostname not in {"127.0.0.1", "localhost"}:
+            return None
+        if not parsed_redirect.port:
+            return None
+
+        code_container: dict[str, str] = {}
+        error_container: dict[str, str] = {}
+        completed = threading.Event()
+        callback_path = parsed_redirect.path or "/"
+
+        class SpotifyAuthHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # type: ignore[override]
+                parsed_request = urlparse(self.path)
+                if parsed_request.path != callback_path:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+
+                query = parse_qs(parsed_request.query)
+                code = query.get("code", [""])[0]
+                error = query.get("error", [""])[0]
+
+                if code:
+                    code_container["code"] = code
+                    self._send_html_response(
+                        200,
+                        "Autorizacion completada. Ya puedes volver a la terminal.",
+                    )
+                else:
+                    if error:
+                        error_container["error"] = error
+                    self._send_html_response(
+                        400,
+                        "No se pudo completar la autorizacion. Puedes cerrar esta ventana.",
+                    )
+                completed.set()
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+            def _send_html_response(self, status_code: int, message: str) -> None:
+                html = (
+                    "<html><body style='font-family: Arial; padding: 24px;'>"
+                    f"<h2>{message}</h2>"
+                    "</body></html>"
+                )
+                encoded = html.encode("utf-8")
+                self.send_response(status_code)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+
+        class ReusableTCPServer(socketserver.TCPServer):
+            allow_reuse_address = True
+
+        try:
+            with ReusableTCPServer((parsed_redirect.hostname, parsed_redirect.port), SpotifyAuthHandler) as server:
+                server.timeout = 0.5
+                started_at = time.time()
+                print(
+                    f"\nEsperando autorizacion automatica en {self.config.spotify_redirect_uri}..."
+                )
+                webbrowser.open(auth_url)
+                while not completed.is_set():
+                    if time.time() - started_at > 120:
+                        return None
+                    server.handle_request()
+        except OSError:
+            return None
+
+        if error_container.get("error"):
+            raise AuthenticationError(
+                f"Spotify devolvio un error de autorizacion: {error_container['error']}"
+            )
+        return code_container.get("code")
 
     def _refresh_access_token(self) -> None:
         if not self._token_data or not self._token_data.get("refresh_token"):

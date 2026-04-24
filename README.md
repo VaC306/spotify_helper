@@ -42,7 +42,8 @@ python main.py
 ```
 
 La primera vez que una accion necesite acceder a Spotify, la app abrira el navegador para autorizar la cuenta.
-Despues te pedira pegar la URL final redirigida en la terminal.
+Si usas un `SPOTIFY_REDIRECT_URI` local como `http://127.0.0.1:8888/callback`, la app intentara capturar el callback automaticamente.
+Si no puede hacerlo, usara el modo manual y te pedira pegar la URL final redirigida en la terminal.
 
 ## Formato del TXT para crear playlists
 

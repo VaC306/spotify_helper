@@ -20,3 +20,7 @@ class StorageError(SpotifyCLIError):
 
 class PlaylistFileError(SpotifyCLIError):
     """Raised when a playlist TXT file cannot be processed."""
+
+
+class OperationCancelled(SpotifyCLIError):
+    """Raised when the user cancels the current flow."""

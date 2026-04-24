@@ -1,2 +1,5 @@
 requests>=2.31.0,<3.0.0
 python-dotenv>=1.0.0,<2.0.0
+colorama>=0.4.6,<1.0.0
+rich>=13.7.0,<14.0.0
+prompt-toolkit>=3.0.43,<4.0.0
