@@ -50,28 +50,31 @@ class SpotifyCLI:
 
     def run(self) -> None:
         while True:
-            self._print_main_menu()
-            option = prompt_menu_choice()
+            try:
+                self._print_main_menu()
+                option = prompt_menu_choice()
 
-            if not option:
-                continue
+                if not option:
+                    continue
 
-            if option == "1":
-                self._safe_execute(self._handle_recommendations)
-            elif option == "2":
-                self._safe_execute(self._handle_create_playlist)
-            elif option == "3":
-                self._safe_execute(self._handle_export_playlist)
-            elif option == "4":
-                self._safe_execute(self._handle_clear_session)
-            elif option == "5":
-                print_message("[i]", "Hasta luego.")
-                print_exit_screen()
+                if option == "1":
+                    self._safe_execute(self._handle_recommendations)
+                elif option == "2":
+                    self._safe_execute(self._handle_create_playlist)
+                elif option == "3":
+                    self._safe_execute(self._handle_export_playlist)
+                elif option == "4":
+                    self._safe_execute(self._handle_clear_session)
+                elif option == "5":
+                    self._exit_application()
+                    break
+                else:
+                    print_message("[!]", "Opcion invalida. Intenta nuevamente.")
+
+                prompt_continue()
+            except KeyboardInterrupt:
+                self._exit_application()
                 break
-            else:
-                print_message("[!]", "Opcion invalida. Intenta nuevamente.")
-
-            prompt_continue()
 
     def _print_main_menu(self) -> None:
         print_banner()
@@ -235,3 +238,8 @@ class SpotifyCLI:
         display_name = user.get("display_name") or user.get("id") or "Usuario"
         user_id = user.get("id", "spotify")
         print_session_badge(display_name, user_id)
+
+    @staticmethod
+    def _exit_application() -> None:
+        print_message("[i]", "Hasta luego.")
+        print_exit_screen()
