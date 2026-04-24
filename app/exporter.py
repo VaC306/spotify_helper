@@ -14,7 +14,7 @@ class PlaylistExporter:
         self.exports_dir = exports_dir
 
     def find_playlists(self, title: str) -> list[dict[str, Any]]:
-        playlists = self.spotify_client.get_user_playlists()
+        playlists = self.list_exportable_playlists()
         exact_matches: list[dict[str, Any]] = []
         partial_matches: list[dict[str, Any]] = []
         title_key = title.strip().lower()
@@ -29,6 +29,16 @@ class PlaylistExporter:
 
         return exact_matches or partial_matches
 
+    def list_exportable_playlists(self) -> list[dict[str, Any]]:
+        playlists = self.spotify_client.get_user_playlists()
+        current_user = self.spotify_client.get_current_user()
+        current_user_id = current_user.get("id", "")
+        return [
+            playlist
+            for playlist in playlists
+            if self._can_export_playlist(playlist, current_user_id)
+        ]
+
     def export_playlist(self, playlist: dict[str, Any]) -> Path:
         tracks = self.spotify_client.get_playlist_tracks(playlist["id"])
         if not tracks:
@@ -37,11 +47,11 @@ class PlaylistExporter:
         lines: list[str] = []
         index = 1
         for item in tracks:
-            track = item.get("track") or {}
-            if not track:
+            content_item = item.get("item") or item.get("track") or {}
+            if not content_item or content_item.get("type") == "episode":
                 continue
-            title = track.get("name", "Cancion sin titulo")
-            artist = ", ".join(artist.get("name", "") for artist in track.get("artists", []))
+            title = content_item.get("name", "Cancion sin titulo")
+            artist = ", ".join(artist.get("name", "") for artist in content_item.get("artists", []))
             lines.append(f"{index}. {title} - {artist}")
             index += 1
 
@@ -52,3 +62,9 @@ class PlaylistExporter:
         output_path = self.exports_dir / filename
         output_path.write_text("\n".join(lines), encoding="utf-8")
         return output_path
+
+    @staticmethod
+    def _can_export_playlist(playlist: dict[str, Any], current_user_id: str) -> bool:
+        owner_id = playlist.get("owner", {}).get("id", "")
+        collaborative = bool(playlist.get("collaborative", False))
+        return owner_id == current_user_id or collaborative

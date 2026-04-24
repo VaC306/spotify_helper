@@ -74,7 +74,7 @@ def ensure_parent_dir(file_path: Path) -> None:
 def ask_yes_no(prompt: str) -> bool:
     """Prompt the user for a yes/no answer."""
     while True:
-        answer = _prompt(f"[bold green]?[/bold green] {prompt} [dim](s/n, Esc cancela)[/dim]")
+        answer = _prompt(f"{prompt} [dim](s/n, Esc cancela)[/dim]\n[bold green]>[/bold green] ")
         answer = answer.strip().lower()
         if answer in {"s", "si", "y", "yes"}:
             return True
@@ -185,7 +185,7 @@ def print_subtle(text: str) -> None:
 def prompt_text(label: str, allow_empty: bool = False) -> str:
     """Prompt for text with a styled input and cancellation support."""
     while True:
-        value = _prompt(f"[bold green]>[/bold green] {label} [dim](Esc cancela)[/dim]").strip()
+        value = _prompt(f"{label} [dim](Esc cancela)[/dim]\n[bold green]>[/bold green] ").strip()
         if value or allow_empty:
             return value
         print_message("[!]", "Este campo no puede estar vacio.")
@@ -198,7 +198,7 @@ def prompt_menu_choice() -> str:
 
 def prompt_continue() -> None:
     """Wait for Enter or Esc to continue."""
-    _prompt("[dim]Pulsa Enter para volver al menu principal[/dim]", allow_cancel=False)
+    _prompt("[dim]Pulsa Enter para volver al menu principal[/dim]\n[bold green]>[/bold green] ", allow_cancel=False)
 
 
 def print_footer() -> None:

@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Any, Callable
 
 from app.config import load_config
 from app.exceptions import (
@@ -148,26 +148,36 @@ class SpotifyCLI:
 
     def _handle_export_playlist(self) -> None:
         print_section("Exportar playlist a TXT")
-        title = prompt_text("Titulo de la playlist a exportar")
-
-        matches = self.exporter.find_playlists(title)
-        if not matches:
-            print_message("[!]", "No se encontraron playlists con ese titulo.")
-            return
-
-        if len(matches) == 1:
-            selected = matches[0]
-        else:
-            playlist_items = []
-            for playlist in matches:
-                owner = playlist.get("owner", {}).get("display_name", "Desconocido")
-                playlist_items.append(f"{playlist.get('name', 'Sin nombre')} (owner: {owner})")
-            print_numbered_items("Selecciona una playlist", playlist_items)
-            choice = prompt_text("Selecciona el numero de la playlist")
-            if not choice.isdigit() or not (1 <= int(choice) <= len(matches)):
-                print_message("[!]", "Seleccion invalida.")
+        print_numbered_items(
+            "Como quieres buscar la playlist",
+            [
+                "Listar playlists exportables",
+                "Introducir nombre",
+            ],
+        )
+        choice = prompt_text("Selecciona una opcion")
+        if choice == "1":
+            matches = self.exporter.list_exportable_playlists()
+            if not matches:
+                print_message(
+                    "[!]",
+                    "No hay playlists exportables disponibles. En modo desarrollo, Spotify solo permite leer playlists propias o colaborativas.",
+                )
                 return
-            selected = matches[int(choice) - 1]
+            selected = self._select_playlist(matches, "Selecciona una playlist para exportar")
+        elif choice == "2":
+            title = prompt_text("Titulo de la playlist a exportar")
+            matches = self.exporter.find_playlists(title)
+            if not matches:
+                print_message(
+                    "[!]",
+                    "No se encontraron playlists exportables con ese titulo. En modo desarrollo, Spotify solo permite leer items de playlists propias o colaborativas.",
+                )
+                return
+            selected = self._select_playlist(matches, "Selecciona una playlist")
+        else:
+            print_message("[!]", "Seleccion invalida.")
+            return
 
         output_path = self.exporter.export_playlist(selected)
         print_section("Exportacion completada")
@@ -238,6 +248,21 @@ class SpotifyCLI:
         display_name = user.get("display_name") or user.get("id") or "Usuario"
         user_id = user.get("id", "spotify")
         print_session_badge(display_name, user_id)
+
+    def _select_playlist(self, playlists: list[dict[str, Any]], title: str) -> dict[str, Any]:
+        if len(playlists) == 1:
+            return playlists[0]
+
+        playlist_items = []
+        for playlist in playlists:
+            owner = playlist.get("owner", {}).get("display_name", "Desconocido")
+            playlist_items.append(f"{playlist.get('name', 'Sin nombre')} (owner: {owner})")
+
+        print_numbered_items(title, playlist_items)
+        choice = prompt_text("Selecciona el numero de la playlist")
+        if not choice.isdigit() or not (1 <= int(choice) <= len(playlists)):
+            raise OperationCancelled("Seleccion cancelada o invalida. Regresando al menu principal.")
+        return playlists[int(choice) - 1]
 
     @staticmethod
     def _exit_application() -> None:

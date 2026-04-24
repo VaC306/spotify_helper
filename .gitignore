@@ -2,6 +2,9 @@
 .venv/
 venv/
 env/
+data/token_cache.json
+data/exports/*.txt
+!data/exports/.gitkeep
 __pycache__/
 *.py[cod]
 *.pyo

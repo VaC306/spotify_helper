@@ -119,7 +119,7 @@ class SpotifyClient:
 
     def get_playlist_tracks(self, playlist_id: str) -> list[dict[str, Any]]:
         tracks: list[dict[str, Any]] = []
-        endpoint = f"/playlists/{playlist_id}/tracks"
+        endpoint = f"/playlists/{playlist_id}/items"
         params: dict[str, Any] | None = {"limit": 100}
 
         while endpoint:
