@@ -80,6 +80,18 @@ class SpotifyClient:
             return None
         return self._current_user
 
+    def clear_cached_session(self) -> bool:
+        """Remove the local token cache and in-memory session."""
+        self._token_data = None
+        self._current_user = None
+        try:
+            if self.config.token_cache_path.exists():
+                self.config.token_cache_path.unlink()
+                return True
+        except OSError as exc:
+            raise AuthenticationError("No se pudo borrar la sesion local de Spotify.") from exc
+        return False
+
     def create_playlist(self, name: str, description: str = "") -> dict[str, Any]:
         user = self.get_current_user()
         payload = {"name": name, "description": description, "public": False}
@@ -171,7 +183,7 @@ class SpotifyClient:
             response = self._perform_api_request(method, url, headers, params, json_body)
 
         if response.status_code >= 400:
-            self._raise_api_error(response)
+            self._raise_api_error(response, endpoint)
 
         if not response.text:
             return {}
@@ -401,7 +413,7 @@ class SpotifyClient:
             raise AuthenticationError("No se pudo guardar el token localmente.") from exc
 
     @staticmethod
-    def _raise_api_error(response: requests.Response) -> None:
+    def _raise_api_error(response: requests.Response, endpoint: str) -> None:
         message = "Error al comunicarse con Spotify."
         try:
             data = response.json()
@@ -412,6 +424,22 @@ class SpotifyClient:
                 message = error
         except ValueError:
             pass
+
+        if response.status_code == 403:
+            playlist_endpoint = endpoint.startswith("/me/playlists") or endpoint.startswith("/playlists/")
+            if playlist_endpoint:
+                message = (
+                    f"{message}. Spotify denego el acceso a playlists. "
+                    "Las causas mas comunes son: token antiguo sin scopes actualizados, "
+                    "falta de permisos concedidos o que tu cuenta no este habilitada en "
+                    "Spotify for Developers para esta app. Prueba a borrar `data/token_cache.json` "
+                    "y autenticarte de nuevo."
+                )
+            else:
+                message = (
+                    f"{message}. Spotify devolvio 403 Forbidden. Revisa permisos concedidos, "
+                    "credenciales y que la cuenta tenga acceso a esta app en Spotify for Developers."
+                )
         raise SpotifyAPIError(message)
 
     @staticmethod

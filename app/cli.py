@@ -30,6 +30,7 @@ from app.utils import (
     print_subtle,
     print_track_card,
     print_title,
+    prompt_continue,
     prompt_menu_choice,
     prompt_text,
     truncate_text,
@@ -50,10 +51,9 @@ class SpotifyCLI:
     def run(self) -> None:
         while True:
             self._print_main_menu()
-            try:
-                option = prompt_menu_choice("Selecciona una opcion")
-            except OperationCancelled:
-                print_message("[x]", "Ya estas en el menu principal.")
+            option = prompt_menu_choice()
+
+            if not option:
                 continue
 
             if option == "1":
@@ -63,16 +63,15 @@ class SpotifyCLI:
             elif option == "3":
                 self._safe_execute(self._handle_export_playlist)
             elif option == "4":
+                self._safe_execute(self._handle_clear_session)
+            elif option == "5":
                 print_message("[i]", "Hasta luego.")
                 print_exit_screen()
                 break
             else:
                 print_message("[!]", "Opcion invalida. Intenta nuevamente.")
 
-            try:
-                prompt_menu_choice("Pulsa Enter para volver al menu principal")
-            except OperationCancelled:
-                pass
+            prompt_continue()
 
     def _print_main_menu(self) -> None:
         print_banner()
@@ -84,7 +83,8 @@ class SpotifyCLI:
                 (1, "Recomendar canciones por genero"),
                 (2, "Crear playlist desde TXT"),
                 (3, "Exportar playlist a TXT"),
-                (4, "Salir"),
+                (4, "Cerrar sesion de Spotify"),
+                (5, "Salir"),
             ]
         )
         print_footer()
@@ -171,6 +171,18 @@ class SpotifyCLI:
         print_message("[OK]", "Playlist exportada correctamente.")
         print_key_value_list([("Archivo generado", str(output_path))])
 
+    def _handle_clear_session(self) -> None:
+        print_section("Cerrar sesion de Spotify")
+        if not ask_yes_no("Quieres borrar la sesion local guardada"):
+            print_message("[i]", "Se mantuvo la sesion actual.")
+            return
+
+        cleared = self.spotify_client.clear_cached_session()
+        if cleared:
+            print_message("[OK]", "Sesion local borrada. La proxima accion pedira autorizacion de nuevo.")
+        else:
+            print_message("[i]", "No habia una sesion local guardada.")
+
     @staticmethod
     def _resolve_genre_choice(choice: str, suggested: list[str]) -> str:
         if choice.isdigit():
@@ -197,6 +209,24 @@ class SpotifyCLI:
             else:
                 print_section("Error")
                 print_message("[!]", str(exc))
+                SpotifyCLI._print_auth_guidance(exc)
+
+    @staticmethod
+    def _print_auth_guidance(exc: Exception) -> None:
+        message = str(exc).lower()
+        if "spotify denego el acceso a playlists" not in message and "403 forbidden" not in message:
+            return
+
+        print_bullet_panel(
+            "Que probar ahora",
+            [
+                "Usa la opcion 'Cerrar sesion de Spotify' del menu para borrar el token cacheado.",
+                "Autoriza la app de nuevo cuando te lo pida.",
+                "Revisa que tu cuenta tenga acceso a la app en Spotify for Developers.",
+                "Confirma que el redirect URI del .env coincide exactamente con el del dashboard.",
+            ],
+            color="yellow",
+        )
 
     def _print_user_session(self) -> None:
         user = self.spotify_client.get_current_user_if_authenticated()

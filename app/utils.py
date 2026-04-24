@@ -17,6 +17,7 @@ from app.exceptions import OperationCancelled
 
 colorama_init(autoreset=True)
 console = Console()
+ESCAPE_SENTINEL = "__ESCAPE_CANCELLED__"
 
 
 def _build_key_bindings() -> KeyBindings:
@@ -24,7 +25,7 @@ def _build_key_bindings() -> KeyBindings:
 
     @bindings.add("escape")
     def _(event) -> None:
-        raise OperationCancelled("Operacion cancelada. Regresando al menu principal.")
+        event.app.exit(result=ESCAPE_SENTINEL)
 
     return bindings
 
@@ -190,9 +191,14 @@ def prompt_text(label: str, allow_empty: bool = False) -> str:
         print_message("[!]", "Este campo no puede estar vacio.")
 
 
-def prompt_menu_choice(label: str) -> str:
-    """Prompt for a menu choice with a styled input."""
-    return _prompt(f"[bold green]>[/bold green] {label}").strip()
+def prompt_menu_choice() -> str:
+    """Prompt for a menu choice with a minimal styled input."""
+    return _prompt("[bold green]>[/bold green] ", allow_cancel=False).strip()
+
+
+def prompt_continue() -> None:
+    """Wait for Enter or Esc to continue."""
+    _prompt("[dim]Pulsa Enter para volver al menu principal[/dim]", allow_cancel=False)
 
 
 def print_footer() -> None:
@@ -200,7 +206,7 @@ def print_footer() -> None:
     console.print()
     console.print(
         Align.center(
-            "[dim]Spotify Web API  |  Favoritos locales JSON  |  Pulsa Esc para volver[/dim]"
+            "[dim]Spotify Web API  |  Favoritos locales JSON  |  Esc vuelve atras[/dim]"
         )
     )
 
@@ -285,7 +291,12 @@ def print_exit_screen() -> None:
     )
 
 
-def _prompt(message: str) -> str:
+def _prompt(message: str, allow_cancel: bool = True) -> str:
     """Read interactive input with Esc cancellation support."""
     plain_message = Text.from_markup(message).plain
-    return PROMPT_SESSION.prompt(plain_message)
+    result = PROMPT_SESSION.prompt(plain_message)
+    if result == ESCAPE_SENTINEL:
+        if allow_cancel:
+            raise OperationCancelled("Operacion cancelada. Regresando al menu principal.")
+        return ""
+    return result
