@@ -1,5 +1,6 @@
 from typing import Any
 
+from app.exceptions import SpotifyAPIError
 from app.spotify_client import SpotifyClient
 from app.storage import LikedSongsStorage
 
@@ -16,12 +17,20 @@ class Recommender:
         return genres[:limit]
 
     def recommend_by_genre(self, genre: str, limit: int = 5) -> list[dict[str, Any]]:
-        available_genres = self.spotify_client.get_available_genre_seeds()
-        if genre in available_genres:
-            tracks = self.spotify_client.get_recommendations_by_genre(genre, limit=limit)
-            return self._deduplicate_tracks(tracks)
+        genre_value = genre.strip().lower()
+        if not genre_value:
+            return []
 
-        artists = self.spotify_client.search_artists_by_genre(genre, limit=3)
+        try:
+            direct_tracks = self.spotify_client.get_recommendations_by_genre(genre_value, limit=limit)
+        except SpotifyAPIError:
+            direct_tracks = []
+
+        deduplicated = self._deduplicate_tracks(direct_tracks)
+        if deduplicated:
+            return deduplicated[:limit]
+
+        artists = self.spotify_client.search_artists_by_genre(genre_value, limit=3)
         tracks: list[dict[str, Any]] = []
         for artist in artists:
             tracks.extend(self.spotify_client.get_artist_top_tracks(artist["id"]))

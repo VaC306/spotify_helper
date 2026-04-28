@@ -58,6 +58,10 @@ class LikedSongsStorage:
         self._save(items)
         return True
 
+    def list_songs(self) -> list[dict[str, Any]]:
+        """Return all locally stored liked songs."""
+        return self._load()
+
     @staticmethod
     def _build_text_key(title: str, artist: str) -> str:
         return f"{normalize_text(title)}::{normalize_text(artist)}"

@@ -26,7 +26,11 @@ class SpotifyClient:
         "playlist-modify-private",
         "playlist-read-private",
         "playlist-read-collaborative",
+        "user-top-read",
+        "user-read-recently-played",
+        "user-read-private",
     ]
+    REQUIRED_SCOPE_SET = set(SCOPES)
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -63,6 +67,29 @@ class SpotifyClient:
         data = self._request("GET", "/search", params=params)
         return data.get("tracks", {}).get("items", [])
 
+    def search_tracks(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        params = {"q": query, "type": "track", "limit": min(limit, 10)}
+        data = self._request("GET", "/search", params=params)
+        return data.get("tracks", {}).get("items", [])
+
+    def get_top_tracks(self, time_range: str = "medium_term", limit: int = 10) -> list[dict[str, Any]]:
+        params = {"time_range": time_range, "limit": min(limit, 50)}
+        data = self._request("GET", "/me/top/tracks", params=params)
+        return data.get("items", [])
+
+    def get_top_artists(self, time_range: str = "medium_term", limit: int = 10) -> list[dict[str, Any]]:
+        params = {"time_range": time_range, "limit": min(limit, 50)}
+        data = self._request("GET", "/me/top/artists", params=params)
+        return data.get("items", [])
+
+    def get_recently_played(self, limit: int = 20) -> list[dict[str, Any]]:
+        params = {"limit": min(limit, 50)}
+        data = self._request("GET", "/me/player/recently-played", params=params)
+        return data.get("items", [])
+
+    def get_artist(self, artist_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/artists/{artist_id}")
+
     def get_current_user(self) -> dict[str, Any]:
         if self._current_user is None:
             self._current_user = self._request("GET", "/me")
@@ -92,6 +119,16 @@ class SpotifyClient:
             raise AuthenticationError("No se pudo borrar la sesion local de Spotify.") from exc
         return False
 
+    def get_missing_scopes(self) -> list[str]:
+        """Return missing scopes from the cached token, if known."""
+        if not self._token_data:
+            return self.SCOPES.copy()
+        scope_value = str(self._token_data.get("scope", "")).strip()
+        if not scope_value:
+            return []
+        granted = set(scope_value.split())
+        return [scope for scope in self.SCOPES if scope not in granted]
+
     def create_playlist(self, name: str, description: str = "") -> dict[str, Any]:
         user = self.get_current_user()
         payload = {"name": name, "description": description, "public": False}
@@ -100,7 +137,13 @@ class SpotifyClient:
     def add_tracks_to_playlist(self, playlist_id: str, track_uris: list[str]) -> None:
         for start in range(0, len(track_uris), 100):
             chunk = track_uris[start : start + 100]
-            self._request("POST", f"/playlists/{playlist_id}/tracks", json_body={"uris": chunk})
+            self._request("POST", f"/playlists/{playlist_id}/items", json_body={"uris": chunk})
+
+    def replace_playlist_items(self, playlist_id: str, track_uris: list[str]) -> None:
+        self._request("PUT", f"/playlists/{playlist_id}/items", json_body={"uris": track_uris[:100]})
+        remaining = track_uris[100:]
+        if remaining:
+            self.add_tracks_to_playlist(playlist_id, remaining)
 
     def get_user_playlists(self) -> list[dict[str, Any]]:
         playlists: list[dict[str, Any]] = []
@@ -214,6 +257,9 @@ class SpotifyClient:
             raise SpotifyAPIError("No se pudo conectar con Spotify.") from exc
 
     def _get_access_token(self) -> str:
+        if self._token_data and self._missing_required_scopes(self._token_data):
+            self.clear_cached_session()
+
         if self._token_data and not self._is_token_expired(self._token_data):
             return self._token_data["access_token"]
 
@@ -338,6 +384,8 @@ class SpotifyClient:
         refreshed = self._request_token(payload)
         if not refreshed.get("refresh_token"):
             refreshed["refresh_token"] = self._token_data["refresh_token"]
+        if not refreshed.get("scope"):
+            refreshed["scope"] = self._token_data.get("scope", "")
         self._token_data = refreshed
         self._save_token_cache(self._token_data)
 
@@ -412,8 +460,14 @@ class SpotifyClient:
         except OSError as exc:
             raise AuthenticationError("No se pudo guardar el token localmente.") from exc
 
-    @staticmethod
-    def _raise_api_error(response: requests.Response, endpoint: str) -> None:
+    def _missing_required_scopes(self, token_data: dict[str, Any]) -> bool:
+        scope_value = str(token_data.get("scope", "")).strip()
+        if not scope_value:
+            return False
+        granted = set(scope_value.split())
+        return not self.REQUIRED_SCOPE_SET.issubset(granted)
+
+    def _raise_api_error(self, response: requests.Response, endpoint: str) -> None:
         message = "Error al comunicarse con Spotify."
         try:
             data = response.json()
@@ -423,10 +477,23 @@ class SpotifyClient:
             elif isinstance(error, str):
                 message = error
         except ValueError:
-            pass
+            message = f"Spotify devolvio un error HTTP {response.status_code}."
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "").strip()
+            message = "Spotify limito temporalmente las solicitudes."
+            if retry_after.isdigit():
+                message += f" Intenta de nuevo en {retry_after} segundos."
+            raise SpotifyAPIError(message)
+
+        if response.status_code >= 500:
+            raise SpotifyAPIError(
+                "Spotify no esta respondiendo correctamente en este momento. Intenta de nuevo en unos minutos."
+            )
 
         if response.status_code == 403:
             playlist_endpoint = endpoint.startswith("/me/playlists") or endpoint.startswith("/playlists/")
+            stats_endpoint = endpoint.startswith("/me/top/") or endpoint.startswith("/me/player/recently-played")
             if playlist_endpoint:
                 message = (
                     f"{message}. Spotify denego el acceso a playlists. "
@@ -434,6 +501,17 @@ class SpotifyClient:
                     "falta de permisos concedidos o que tu cuenta no este habilitada en "
                     "Spotify for Developers para esta app. Prueba a borrar `data/token_cache.json` "
                     "y autenticarte de nuevo."
+                )
+            elif stats_endpoint:
+                missing_scopes = self.get_missing_scopes()
+                missing_scope_text = ""
+                if missing_scopes:
+                    missing_scope_text = " Scopes pendientes: " + ", ".join(missing_scopes) + "."
+                message = (
+                    f"{message}. Spotify denego el acceso a datos de estadisticas. "
+                    "Prueba a cerrar sesion localmente y reautorizar para conceder los scopes "
+                    "`user-top-read`, `user-read-recently-played` y `user-read-private`."
+                    f"{missing_scope_text}"
                 )
             else:
                 message = (

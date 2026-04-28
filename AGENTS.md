@@ -8,9 +8,10 @@ Guia para agentes que trabajen en este repositorio.
 - Tipo: aplicacion CLI en Python para gestionar playlists de Spotify
 - API externa: Spotify Web API oficial
 - Objetivo funcional:
-  - recomendar canciones por genero
+  - recomendar canciones por genero (temporalmente deshabilitado en Development Mode)
   - crear playlists desde TXT
   - exportar playlists a TXT
+  - generar estadisticas HTML de la cuenta
 - Restricciones:
   - sin GUI
   - sin base de datos
@@ -40,9 +41,11 @@ app/
   config.py
   exceptions.py
   exporter.py
+  html_report.py
   playlist_manager.py
   recommender.py
   spotify_client.py
+  stats.py
   storage.py
   utils.py
 data/
@@ -178,6 +181,8 @@ Titulo - Artista
 - `app/recommender.py`: recomendaciones por genero
 - `app/playlist_manager.py`: lectura de TXT y creacion de playlist
 - `app/exporter.py`: busqueda y exportacion de playlists
+- `app/stats.py`: agregacion y normalizacion de estadisticas de Spotify
+- `app/html_report.py`: construccion del informe HTML y apertura en navegador
 - `app/storage.py`: JSON local para favoritos
 - `app/utils.py`: utilidades de presentacion, prompts y helpers pequenos
 
@@ -187,6 +192,7 @@ Titulo - Artista
 - Mantener soporte de cancelacion con `Esc`.
 - Mantener el estilo visual del CLI salvo mejora clara.
 - Mantener soporte de callback automatico para autenticacion local.
+- Mantener deshabilitada la opcion de recomendaciones por genero mientras la app opere en Development Mode con restricciones de Spotify (febrero 2026).
 - No trackear `.env` ni caches.
 
 ## Git y archivos sensibles

@@ -1,6 +1,7 @@
 from typing import Any, Callable
 
 from app.config import load_config
+from app.advanced_tools import AdvancedTools
 from app.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -10,9 +11,11 @@ from app.exceptions import (
     StorageError,
 )
 from app.exporter import PlaylistExporter
+from app.html_report import HTMLReportBuilder
 from app.playlist_manager import PlaylistManager
 from app.recommender import Recommender
 from app.spotify_client import SpotifyClient
+from app.stats import StatsService
 from app.storage import LikedSongsStorage
 from app.utils import (
     ask_yes_no,
@@ -25,15 +28,12 @@ from app.utils import (
     print_message,
     print_numbered_items,
     print_section,
-    print_separator,
     print_session_badge,
     print_subtle,
-    print_track_card,
     print_title,
     prompt_continue,
     prompt_menu_choice,
     prompt_text,
-    truncate_text,
 )
 
 
@@ -47,6 +47,14 @@ class SpotifyCLI:
         self.recommender = Recommender(self.spotify_client, self.storage)
         self.playlist_manager = PlaylistManager(self.spotify_client)
         self.exporter = PlaylistExporter(self.spotify_client, self.config.exports_dir)
+        self.stats_service = StatsService(self.spotify_client, self.storage)
+        self.report_builder = HTMLReportBuilder(self.config.exports_dir)
+        self.advanced_tools = AdvancedTools(
+            self.spotify_client,
+            self.playlist_manager,
+            self.exporter,
+            self.storage,
+        )
 
     def run(self) -> None:
         while True:
@@ -64,8 +72,12 @@ class SpotifyCLI:
                 elif option == "3":
                     self._safe_execute(self._handle_export_playlist)
                 elif option == "4":
-                    self._safe_execute(self._handle_clear_session)
+                    self._safe_execute(self._handle_stats_report)
                 elif option == "5":
+                    self._safe_execute(self._handle_clear_session)
+                elif option == "6":
+                    self._safe_execute(self._handle_advanced_tools)
+                elif option == "7":
                     self._exit_application()
                     break
                 else:
@@ -83,44 +95,31 @@ class SpotifyCLI:
         self._print_user_session()
         print_menu(
             [
-                (1, "Recomendar canciones por genero"),
+                (1, "Recomendaciones por genero (deshabilitada)"),
                 (2, "Crear playlist desde TXT"),
                 (3, "Exportar playlist a TXT"),
-                (4, "Cerrar sesion de Spotify"),
-                (5, "Salir"),
+                (4, "Ver estadisticas en HTML"),
+                (5, "Cerrar sesion de Spotify"),
+                (6, "Herramientas avanzadas"),
+                (7, "Salir"),
             ]
         )
         print_footer()
 
     def _handle_recommendations(self) -> None:
         print_section("Recomendaciones por genero")
-        suggested = self.recommender.get_suggested_genres()
-        if suggested:
-            print_numbered_items("Generos sugeridos por Spotify", suggested)
-
-        raw_choice = prompt_text("Escribe un genero o el numero de la lista sugerida")
-        genre = self._resolve_genre_choice(raw_choice, suggested)
-        if not genre:
-            print_message("[!]", "No se pudo resolver el genero indicado.")
-            return
-
-        tracks = self.recommender.recommend_by_genre(genre)
-        if not tracks:
-            print_message("[!]", f"No se encontraron recomendaciones para el genero '{genre}'.")
-            return
-
-        print_section(f"Recomendaciones para: {genre}")
-        for index, track in enumerate(tracks, start=1):
-            title = track.get("name", "Sin titulo")
-            artists = ", ".join(artist.get("name", "") for artist in track.get("artists", []))
-            print_track_card(index, truncate_text(title), truncate_text(artists), genre)
-            if ask_yes_no("Quieres guardar esta cancion en canciones que te gustan"):
-                saved = self.recommender.save_liked_song(track, genre)
-                if saved:
-                    print_message("[OK]", "Cancion guardada correctamente.")
-                else:
-                    print_message("[i]", "La cancion ya estaba guardada.")
-            print_separator(".", 36)
+        print_bullet_panel(
+            "No disponible temporalmente",
+            [
+                "Spotify cambio varios endpoints en Development Mode (Febrero 2026).",
+                "Los endpoints de recomendaciones por genero no estan disponibles para esta app en su estado actual.",
+                "El resto de funciones de playlists y estadisticas siguen operativas.",
+            ],
+            color="yellow",
+        )
+        print_subtle(
+            "Para reactivar esta opcion, la app debe operar con acceso de quota extendida y endpoints compatibles."
+        )
 
     def _handle_create_playlist(self) -> None:
         print_section("Crear playlist desde TXT")
@@ -196,6 +195,179 @@ class SpotifyCLI:
         else:
             print_message("[i]", "No habia una sesion local guardada.")
 
+    def _handle_stats_report(self) -> None:
+        print_section("Estadisticas en HTML")
+        missing_scopes = self.spotify_client.get_missing_scopes()
+        if missing_scopes:
+            print_bullet_panel(
+                "Reautorizacion recomendada",
+                [
+                    "La sesion actual parece no incluir todos los permisos necesarios para estadisticas.",
+                    f"Scopes pendientes: {', '.join(missing_scopes)}",
+                    "Usa 'Cerrar sesion de Spotify' y vuelve a autorizar la app.",
+                ],
+                color="yellow",
+            )
+        snapshot = self.stats_service.build_snapshot()
+        output_path = self.report_builder.build_and_open(snapshot)
+        print_message("[OK]", "Informe HTML generado y abierto en el navegador.")
+        print_key_value_list([("Archivo generado", str(output_path))])
+        if snapshot.warnings:
+            print_bullet_panel(
+                "Secciones parciales",
+                snapshot.warnings,
+                color="yellow",
+            )
+
+    def _handle_advanced_tools(self) -> None:
+        print_section("Herramientas avanzadas")
+        print_numbered_items(
+            "Selecciona una funcion",
+            [
+                "Smart Playlist Builder",
+                "Sync TXT <-> Playlist",
+                "Batch Export Pro",
+                "Buscar favoritos locales",
+                "Detectar duplicados locales",
+                "Mantenimiento de playlist",
+            ],
+        )
+        choice = prompt_text("Elige una opcion")
+        if choice == "1":
+            self._advanced_smart_playlist()
+        elif choice == "2":
+            self._advanced_sync_txt_playlist()
+        elif choice == "3":
+            self._advanced_batch_export()
+        elif choice == "4":
+            self._advanced_search_liked()
+        elif choice == "5":
+            self._advanced_find_duplicates()
+        elif choice == "6":
+            self._advanced_maintain_playlist()
+        else:
+            print_message("[!]", "Seleccion invalida.")
+
+    def _advanced_smart_playlist(self) -> None:
+        print_section("Smart Playlist Builder")
+        name = prompt_text("Nombre de playlist")
+        periods_raw = prompt_text("Periodos (short_term,medium_term,long_term)")
+        periods = [item.strip() for item in periods_raw.split(",") if item.strip()]
+        allowed_periods = {"short_term", "medium_term", "long_term"}
+        invalid_periods = [item for item in periods if item not in allowed_periods]
+        if not periods or invalid_periods:
+            print_message(
+                "[!]",
+                "Periodos invalidos. Usa solo: short_term, medium_term, long_term.",
+            )
+            return
+        include_recent = ask_yes_no("Incluir escuchas recientes")
+        max_per_artist = self._prompt_positive_int("Maximo por artista")
+        limit = self._prompt_positive_int("Cantidad maxima de canciones")
+        excluded_raw = prompt_text("Artistas a excluir (coma, opcional)", allow_empty=True)
+        excluded = [item.strip() for item in excluded_raw.split(",") if item.strip()]
+        result = self.advanced_tools.build_smart_playlist(
+            name,
+            periods,
+            include_recent,
+            max_per_artist,
+            limit,
+            excluded,
+        )
+        print_message("[OK]", "Smart playlist creada.")
+        print_key_value_list(
+            [
+                ("Playlist", result["playlist_name"]),
+                ("Tracks agregadas", str(result["tracks_added"])),
+            ]
+        )
+
+    def _advanced_sync_txt_playlist(self) -> None:
+        print_section("Sync TXT <-> Playlist")
+        txt_path = prompt_text("Ruta TXT")
+        matches = self.exporter.list_exportable_playlists()
+        selected = self._select_playlist(matches, "Selecciona playlist para sync")
+        preview = self.advanced_tools.sync_txt_playlist(txt_path, selected, False)
+        print_section("Preview de sincronizacion")
+        print_key_value_list(
+            [
+                ("Faltantes en playlist", str(preview["missing_count"])),
+                ("Sobrantes en playlist", str(preview["extra_count"])),
+            ]
+        )
+        if preview["missing"]:
+            print_bullet_panel("Faltantes", preview["missing"], color="yellow")
+        if preview["extra"]:
+            print_bullet_panel("Sobrantes", preview["extra"], color="yellow")
+        if ask_yes_no("Aplicar sincronizacion exacta en Spotify"):
+            result = self.advanced_tools.sync_txt_playlist(txt_path, selected, True)
+            print_message("[OK]", "Sincronizacion aplicada correctamente.")
+            print_key_value_list([("Cambios aplicados", "si" if result["applied"] else "no")])
+        else:
+            print_message("[i]", "Solo se mostro preview. No se aplicaron cambios.")
+
+    def _advanced_batch_export(self) -> None:
+        print_section("Batch Export Pro")
+        mode = prompt_text("Modo (all/own/collab)").strip().lower()
+        if mode not in {"all", "own", "collab"}:
+            print_message("[!]", "Modo invalido. Usa all, own o collab.")
+            return
+        include_json = ask_yes_no("Incluir export JSON")
+        outputs = self.advanced_tools.batch_export_playlists(mode=mode, include_json=include_json)
+        print_message("[OK]", f"Archivos generados: {len(outputs)}")
+
+    def _advanced_search_liked(self) -> None:
+        query = prompt_text("Texto a buscar en favoritos locales")
+        matches = self.advanced_tools.search_liked_songs(query)
+        print_message("[i]", f"Resultados: {len(matches)}")
+        preview = [f"{item.get('title', '')} - {item.get('artist', '')}" for item in matches[:15]]
+        if preview:
+            print_bullet_panel("Coincidencias", preview, color="green")
+
+    def _advanced_find_duplicates(self) -> None:
+        groups = self.advanced_tools.find_liked_duplicates()
+        print_message("[i]", f"Grupos duplicados: {len(groups)}")
+        preview = []
+        for group in groups[:10]:
+            head = group[0]
+            preview.append(f"{head.get('title', '')} - {head.get('artist', '')} ({len(group)}x)")
+        if preview:
+            print_bullet_panel("Duplicados detectados", preview, color="yellow")
+
+    def _advanced_maintain_playlist(self) -> None:
+        print_section("Mantenimiento de playlist")
+        matches = self.exporter.list_exportable_playlists()
+        selected = self._select_playlist(matches, "Selecciona playlist")
+        preview = self.advanced_tools.maintain_playlist(selected, False)
+        print_section("Preview de mantenimiento")
+        print_key_value_list(
+            [
+                ("Incidencias", str(preview["issues_count"])),
+            ]
+        )
+        if preview["issues"]:
+            issue_preview = [f"{item.get('name', '')}: {item.get('reason', '')}" for item in preview["issues"][:20]]
+            print_bullet_panel("Incidencias", issue_preview, color="yellow")
+        if ask_yes_no("Aplicar reemplazos/saneado"):
+            result = self.advanced_tools.maintain_playlist(selected, True)
+            print_message("[OK]", "Mantenimiento aplicado.")
+            print_key_value_list([("Cambios aplicados", "si" if result["applied"] else "no")])
+        else:
+            print_message("[i]", "Solo se mostro preview. No se aplicaron cambios.")
+
+    @staticmethod
+    def _prompt_positive_int(label: str) -> int:
+        while True:
+            raw = prompt_text(label)
+            if not raw.isdigit():
+                print_message("[!]", "Debes introducir un numero entero positivo.")
+                continue
+            value = int(raw)
+            if value <= 0:
+                print_message("[!]", "El numero debe ser mayor que cero.")
+                continue
+            return value
+
     @staticmethod
     def _resolve_genre_choice(choice: str, suggested: list[str]) -> str:
         if choice.isdigit():
@@ -227,17 +399,28 @@ class SpotifyCLI:
     @staticmethod
     def _print_auth_guidance(exc: Exception) -> None:
         message = str(exc).lower()
-        if "spotify denego el acceso a playlists" not in message and "403 forbidden" not in message:
+        if (
+            "spotify denego el acceso a playlists" not in message
+            and "spotify denego el acceso a datos de estadisticas" not in message
+            and "403 forbidden" not in message
+        ):
             return
+
+        tips = [
+            "Usa la opcion 'Cerrar sesion de Spotify' del menu para borrar el token cacheado.",
+            "Autoriza la app de nuevo cuando te lo pida.",
+            "Revisa que tu cuenta tenga acceso a la app en Spotify for Developers.",
+            "Confirma que el redirect URI del .env coincide exactamente con el del dashboard.",
+        ]
+        if "datos de estadisticas" in message:
+            tips.insert(
+                2,
+                "Asegurate de conceder los permisos `user-top-read`, `user-read-recently-played` y `user-read-private`.",
+            )
 
         print_bullet_panel(
             "Que probar ahora",
-            [
-                "Usa la opcion 'Cerrar sesion de Spotify' del menu para borrar el token cacheado.",
-                "Autoriza la app de nuevo cuando te lo pida.",
-                "Revisa que tu cuenta tenga acceso a la app en Spotify for Developers.",
-                "Confirma que el redirect URI del .env coincide exactamente con el del dashboard.",
-            ],
+            tips,
             color="yellow",
         )
 
