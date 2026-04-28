@@ -4,6 +4,7 @@ venv/
 env/
 data/token_cache.json
 data/exports/*.txt
+data/exports/*.html
 !data/exports/.gitkeep
 __pycache__/
 *.py[cod]
