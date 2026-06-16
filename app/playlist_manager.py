@@ -56,6 +56,7 @@ class PlaylistManager:
         return {
             "playlist_name": playlist.get("name", playlist_name),
             "playlist_id": playlist.get("id", ""),
+            "playlist_url": playlist.get("external_urls", {}).get("spotify", ""),
             "lines_read": len(raw_lines),
             "found_count": len(found_tracks),
             "not_found_count": len(not_found),

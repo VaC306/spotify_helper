@@ -2,22 +2,33 @@ import re
 import unicodedata
 from pathlib import Path
 
-from colorama import Fore, Style, init as colorama_init
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 from rich import box
 from rich.align import Align
 from rich.console import Console
 from rich.panel import Panel
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
 from app.exceptions import OperationCancelled
 
 
-colorama_init(autoreset=True)
 console = Console()
 ESCAPE_SENTINEL = "__ESCAPE_CANCELLED__"
+PRIMARY_COLOR = "spring_green3"
+SECONDARY_COLOR = "cyan1"
+SURFACE_COLOR = "green4"
+MUTED_COLOR = "grey70"
+SOURCE_STYLES = {
+    "txt_import": ("TXT Import", "cyan1"),
+    "smart_playlist": ("Smart Rules", "magenta"),
+    "manual": ("Manual", "yellow"),
+    "api_clone": ("API Clone", "blue"),
+    "template_build": ("Template", "green_yellow"),
+    "future_tool": ("Future Tool", "bright_black"),
+}
 
 
 def _build_key_bindings() -> KeyBindings:
@@ -92,23 +103,26 @@ def truncate_text(value: str, limit: int = 60) -> str:
 
 def print_banner() -> None:
     """Display the CLI title banner."""
-    logo = r"""
-  _____             _   _  __       _____ _      _____
- / ____|           | | (_)/ _|     / ____| |    |_   _|
-| (___  _ __   ___ | |_ _| |_ _   | |    | |      | |
- \___ \| '_ \ / _ \| __| |  _| | | | |    | |      | |
- ____) | |_) | (_) | |_| | | | |_| | |____| |____ _| |_
-|_____/| .__/ \___/ \__|_|_|  \__, |\_____|______|_____|
-       | |                     __/ |
-       |_|                    |___/
-        Playlist Manager for Spotify
-"""
-    print(Fore.GREEN + Style.BRIGHT + logo + Style.RESET_ALL)
+    logo = Text()
+    logo.append("SPOTIFY", style=f"bold {PRIMARY_COLOR}")
+    logo.append(" CLI", style="bold white")
+    logo.append("\n")
+    logo.append("Playlist Manager", style=f"bold {SECONDARY_COLOR}")
+    logo.append("\n")
+    logo.append("Crea, exporta y analiza playlists desde tu terminal", style=MUTED_COLOR)
+    console.print(
+        Panel(
+            Align.center(logo),
+            border_style=SURFACE_COLOR,
+            box=box.DOUBLE,
+            padding=(1, 4),
+        )
+    )
 
 
 def print_separator(char: str = "=", width: int = 58) -> None:
     """Print a horizontal separator."""
-    console.print(f"[green4]{char * width}[/green4]")
+    console.print(f"[{SURFACE_COLOR}]{char * width}[/{SURFACE_COLOR}]")
 
 
 def print_section(title: str) -> None:
@@ -116,25 +130,25 @@ def print_section(title: str) -> None:
     console.print()
     console.print(
         Panel.fit(
-            f"[bold green]{title}[/bold green]",
-            border_style="green4",
-            padding=(0, 2),
-            box=box.ROUNDED,
+            f"[bold {PRIMARY_COLOR}]{title}[/bold {PRIMARY_COLOR}]",
+            border_style=SURFACE_COLOR,
+            padding=(0, 3),
+            box=box.HEAVY,
         )
     )
 
 
 def format_menu_option(number: int, label: str) -> str:
     """Return a formatted menu option string."""
-    return f"[bold green][{number}][/bold green] {label}"
+    return f"[bold {PRIMARY_COLOR}][{number}][/bold {PRIMARY_COLOR}] {label}"
 
 
 def print_message(prefix: str, message: str) -> None:
     """Print a simple prefixed message."""
     styles = {
-        "[OK]": "bold green",
+        "[OK]": f"bold {PRIMARY_COLOR}",
         "[!]": "bold red",
-        "[i]": "bold cyan",
+        "[i]": f"bold {SECONDARY_COLOR}",
         "[x]": "bold yellow",
     }
     style = styles.get(prefix, "bold white")
@@ -145,10 +159,10 @@ def print_title(text: str) -> None:
     """Print the main title panel."""
     console.print(
         Panel.fit(
-            Text(text, style="bold white"),
-            border_style="green4",
-            padding=(0, 4),
-            box=box.ROUNDED,
+            Text(text, style=f"bold {SECONDARY_COLOR}"),
+            border_style=SURFACE_COLOR,
+            padding=(0, 5),
+            box=box.DOUBLE,
         )
     )
 
@@ -161,15 +175,16 @@ def print_menu_option(number: int, label: str) -> None:
 def print_menu(options: list[tuple[int, str]]) -> None:
     """Render the main menu inside a subtle panel."""
     table = Table.grid(padding=(0, 2))
-    table.expand = False
+    table.expand = True
     for number, label in options:
-        table.add_row(f"[bold green]{number}[/bold green]", f"[white]{label}[/white]")
+        table.add_row(f"[bold {PRIMARY_COLOR}]{number:>2}[/bold {PRIMARY_COLOR}]", f"[white]{label}[/white]")
 
     console.print(
         Panel(
             Align.left(table),
-            border_style="green4",
-            box=box.ROUNDED,
+            title=f"[bold {SECONDARY_COLOR}]Menu principal[/bold {SECONDARY_COLOR}]",
+            border_style=SURFACE_COLOR,
+            box=box.HEAVY,
             padding=(0, 2),
             subtitle="[dim]Elige una opcion y pulsa Enter[/dim]",
             subtitle_align="right",
@@ -179,13 +194,13 @@ def print_menu(options: list[tuple[int, str]]) -> None:
 
 def print_subtle(text: str) -> None:
     """Print helper text with low visual weight."""
-    console.print(f"[dim]{text}[/dim]")
+    console.print(f"[{MUTED_COLOR}]{text}[/{MUTED_COLOR}]")
 
 
 def prompt_text(label: str, allow_empty: bool = False) -> str:
     """Prompt for text with a styled input and cancellation support."""
     while True:
-        value = _prompt(f"{label} [dim](Esc cancela)[/dim]\n[bold green]>[/bold green] ").strip()
+        value = _prompt(f"{label} [dim](Esc cancela)[/dim]\n[bold {PRIMARY_COLOR}]>[/bold {PRIMARY_COLOR}] ").strip()
         if value or allow_empty:
             return value
         print_message("[!]", "Este campo no puede estar vacio.")
@@ -193,30 +208,33 @@ def prompt_text(label: str, allow_empty: bool = False) -> str:
 
 def prompt_menu_choice() -> str:
     """Prompt for a menu choice with a minimal styled input."""
-    return _prompt("[bold green]>[/bold green] ", allow_cancel=False).strip()
+    return _prompt(f"[bold {PRIMARY_COLOR}]>[/bold {PRIMARY_COLOR}] ", allow_cancel=False).strip()
 
 
 def prompt_continue() -> None:
     """Wait for Enter or Esc to continue."""
-    _prompt("[dim]Pulsa Enter para volver al menu principal[/dim]\n[bold green]>[/bold green] ", allow_cancel=False)
+    _prompt(
+        f"[dim]Pulsa Enter para volver al menu principal[/dim]\n[bold {PRIMARY_COLOR}]>[/bold {PRIMARY_COLOR}] ",
+        allow_cancel=False,
+    )
 
 
 def print_footer() -> None:
     """Print a small visual footer below the main menu."""
     console.print()
-    console.print(
-        Align.center(
-            "[dim]Spotify Web API  |  Favoritos locales JSON  |  Esc vuelve atras[/dim]"
-        )
-    )
+    console.print(Rule(style=SURFACE_COLOR))
+    console.print(Align.center("[dim]Spotify Web API | Favoritos JSON | Historial local | Esc vuelve atras[/dim]"))
 
 
 def print_session_badge(display_name: str, user_id: str) -> None:
     """Print the current authenticated Spotify user."""
     console.print()
     console.print(
-        Align.center(
-            f"[green]Sesion activa:[/green] [bold white]{display_name}[/bold white] [dim]@{user_id}[/dim]"
+        Panel.fit(
+            f"[bold {PRIMARY_COLOR}]Sesion activa[/bold {PRIMARY_COLOR}]  [bold white]{display_name}[/bold white]  [dim]@{user_id}[/dim]",
+            border_style=SURFACE_COLOR,
+            box=box.SQUARE,
+            padding=(0, 2),
         )
     )
 
@@ -224,17 +242,17 @@ def print_session_badge(display_name: str, user_id: str) -> None:
 def print_track_card(index: int, title: str, artist: str, genre: str) -> None:
     """Render a recommendation card."""
     body = Text()
-    body.append(f"{index}. ", style="bold green")
+    body.append(f"{index}. ", style=f"bold {PRIMARY_COLOR}")
     body.append(f"{title}\n", style="bold white")
-    body.append("Artista: ", style="green")
+    body.append("Artista: ", style=PRIMARY_COLOR)
     body.append(f"{artist}\n", style="white")
-    body.append("Genero: ", style="green")
+    body.append("Genero: ", style=SECONDARY_COLOR)
     body.append(genre, style="white")
     console.print(
         Panel(
             body,
-            border_style="green4",
-            box=box.ROUNDED,
+            border_style=SURFACE_COLOR,
+            box=box.HEAVY,
             padding=(0, 1),
         )
     )
@@ -244,7 +262,7 @@ def print_numbered_items(title: str, items: list[str]) -> None:
     """Render numbered items in a styled list."""
     print_section(title)
     table = Table.grid(padding=(0, 2))
-    table.add_column(style="bold green")
+    table.add_column(style=f"bold {PRIMARY_COLOR}")
     table.add_column(style="white")
     for index, item in enumerate(items, start=1):
         table.add_row(f"{index}.", item)
@@ -262,7 +280,7 @@ def print_bullet_panel(title: str, items: list[str], color: str = "yellow") -> N
             body,
             title=f"[bold {color}]{title}[/bold {color}]",
             border_style=color,
-            box=box.ROUNDED,
+            box=box.HEAVY,
             padding=(0, 1),
         )
     )
@@ -271,11 +289,64 @@ def print_bullet_panel(title: str, items: list[str], color: str = "yellow") -> N
 def print_key_value_list(items: list[tuple[str, str]]) -> None:
     """Render a compact key/value summary block."""
     table = Table.grid(padding=(0, 1))
-    table.add_column(style="green")
+    table.add_column(style=PRIMARY_COLOR)
     table.add_column(style="white")
     for key, value in items:
         table.add_row(f"{key}:", value)
     console.print(table)
+
+
+def print_playlist_history(entries: list[dict[str, str]]) -> None:
+    """Render local playlist creation history."""
+    if not entries:
+        print_message("[i]", "Todavia no hay playlists creadas registradas localmente.")
+        return
+
+    table = Table(
+        box=box.HEAVY,
+        border_style=SURFACE_COLOR,
+        header_style=f"bold {SECONDARY_COLOR}",
+        expand=True,
+        pad_edge=False,
+    )
+    table.add_column("Fecha", style=MUTED_COLOR, width=19)
+    table.add_column("Playlist", style="bold white")
+    table.add_column("Origen", style=PRIMARY_COLOR, width=16)
+    table.add_column("Tracks", justify="right", style=SECONDARY_COLOR, width=8)
+
+    for entry in entries:
+        created_at = truncate_text(entry.get("created_at", "-"), 19)
+        name = truncate_text(entry.get("playlist_name", "Sin nombre"), 34)
+        source_key = entry.get("source", "manual")
+        source = _format_history_source(source_key)
+        tracks = str(entry.get("tracks_added") or entry.get("found_count") or 0)
+        table.add_row(
+            created_at,
+            name,
+            source,
+            tracks,
+            style=_get_history_row_style(source_key),
+        )
+
+    console.print(
+        Panel(
+            table,
+            title=f"[bold {SECONDARY_COLOR}]Historial de playlists creadas[/bold {SECONDARY_COLOR}]",
+            border_style=SURFACE_COLOR,
+            box=box.HEAVY,
+            padding=(0, 1),
+        )
+    )
+
+
+def _format_history_source(source: str) -> str:
+    label, color = SOURCE_STYLES.get(source, (source.replace("_", " ").title() or "Manual", "yellow"))
+    return f"[{color}][{label}][/{color}]"
+
+
+def _get_history_row_style(source: str) -> str:
+    _, color = SOURCE_STYLES.get(source, ("Manual", "yellow"))
+    return color
 
 
 def print_exit_screen() -> None:
@@ -283,9 +354,9 @@ def print_exit_screen() -> None:
     console.print()
     console.print(
         Panel.fit(
-            "[bold green]Gracias por usar Spotify CLI[/bold green]\n[dim]Nos vemos en la siguiente playlist.[/dim]",
-            border_style="green4",
-            box=box.ROUNDED,
+            f"[bold {PRIMARY_COLOR}]Gracias por usar Spotify CLI[/bold {PRIMARY_COLOR}]\n[dim]Nos vemos en la siguiente playlist.[/dim]",
+            border_style=SURFACE_COLOR,
+            box=box.DOUBLE,
             padding=(1, 3),
         )
     )

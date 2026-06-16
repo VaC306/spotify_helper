@@ -9,6 +9,7 @@ from app.exceptions import ConfigurationError
 
 
 TOKEN_CACHE_FILE: Final[str] = "token_cache.json"
+PLAYLIST_HISTORY_FILE: Final[str] = "playlist_history.json"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class AppConfig:
     exports_dir: Path
     liked_songs_path: Path
     token_cache_path: Path
+    playlist_history_path: Path
 
 
 def load_config() -> AppConfig:
@@ -32,6 +34,7 @@ def load_config() -> AppConfig:
     exports_dir = data_dir / "exports"
     liked_songs_path = data_dir / "liked_songs.json"
     token_cache_path = data_dir / TOKEN_CACHE_FILE
+    playlist_history_path = data_dir / PLAYLIST_HISTORY_FILE
 
     client_id = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
     client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
@@ -64,4 +67,5 @@ def load_config() -> AppConfig:
         exports_dir=exports_dir,
         liked_songs_path=liked_songs_path,
         token_cache_path=token_cache_path,
+        playlist_history_path=playlist_history_path,
     )

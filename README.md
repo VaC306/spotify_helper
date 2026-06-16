@@ -9,6 +9,7 @@ Aplicacion CLI en Python para gestionar playlists de Spotify usando la Web API o
 - Exportar una playlist existente a un archivo TXT.
 - Generar un informe HTML moderno con estadisticas de la cuenta.
 - Herramientas avanzadas desde CLI para automatizar playlists, sincronizar, exportar en lote y mantenimiento.
+- Historial local de playlists creadas desde la app.
 
 ## Herramientas avanzadas (menu opcion 6)
 
@@ -30,6 +31,9 @@ La app incluye un submenu de herramientas avanzadas:
 - Mantenimiento de playlist:
   - Muestra preview de incidencias (locales/sin reemplazo).
   - Aplica saneado solo si confirmas.
+- Historial de playlists creadas:
+  - Muestra las ultimas playlists creadas desde import TXT o Smart Playlist Builder.
+  - Se guarda localmente en `data/playlist_history.json`.
 
 ### Validaciones incluidas
 

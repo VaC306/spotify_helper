@@ -73,6 +73,7 @@ class AdvancedTools:
         return {
             "playlist_name": playlist.get("name", name),
             "playlist_id": playlist.get("id", ""),
+            "playlist_url": playlist.get("external_urls", {}).get("spotify", ""),
             "tracks_added": len(uris),
         }
 

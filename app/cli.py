@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Callable
 
 from app.config import load_config
@@ -16,13 +17,14 @@ from app.playlist_manager import PlaylistManager
 from app.recommender import Recommender
 from app.spotify_client import SpotifyClient
 from app.stats import StatsService
-from app.storage import LikedSongsStorage
+from app.storage import LikedSongsStorage, PlaylistHistoryStorage
 from app.utils import (
     ask_yes_no,
     print_banner,
     print_bullet_panel,
     print_exit_screen,
     print_footer,
+    print_playlist_history,
     print_key_value_list,
     print_menu,
     print_message,
@@ -44,6 +46,7 @@ class SpotifyCLI:
         self.config = load_config()
         self.spotify_client = SpotifyClient(self.config)
         self.storage = LikedSongsStorage(self.config.liked_songs_path)
+        self.playlist_history = PlaylistHistoryStorage(self.config.playlist_history_path)
         self.recommender = Recommender(self.spotify_client, self.storage)
         self.playlist_manager = PlaylistManager(self.spotify_client)
         self.exporter = PlaylistExporter(self.spotify_client, self.config.exports_dir)
@@ -93,6 +96,7 @@ class SpotifyCLI:
         print_title("Spotify CLI Playlist Manager")
         print_subtle("Gestiona recomendaciones, playlists y exportaciones desde tu terminal.")
         self._print_user_session()
+        self._print_recent_playlist_history()
         print_menu(
             [
                 (1, "Recomendaciones por genero (deshabilitada)"),
@@ -138,6 +142,11 @@ class SpotifyCLI:
         txt_path = prompt_text("Ruta del archivo TXT")
 
         result = self.playlist_manager.create_playlist_from_txt(playlist_name, txt_path)
+        self._record_playlist_history(
+            source="txt_import",
+            result=result,
+            extra={"source_path": txt_path},
+        )
         print_section("Resumen de creacion")
         print_message("[OK]", "Playlist creada correctamente.")
         print_key_value_list(
@@ -241,6 +250,7 @@ class SpotifyCLI:
                 "Buscar favoritos locales",
                 "Detectar duplicados locales",
                 "Mantenimiento de playlist",
+                "Ver historial de playlists creadas",
             ],
         )
         choice = prompt_text("Elige una opcion")
@@ -256,6 +266,8 @@ class SpotifyCLI:
             self._advanced_find_duplicates()
         elif choice == "6":
             self._advanced_maintain_playlist()
+        elif choice == "7":
+            self._advanced_playlist_history()
         else:
             print_message("[!]", "Seleccion invalida.")
 
@@ -285,6 +297,7 @@ class SpotifyCLI:
             limit,
             excluded,
         )
+        self._record_playlist_history(source="smart_playlist", result=result)
         print_message("[OK]", "Smart playlist creada.")
         print_key_value_list(
             [
@@ -366,6 +379,10 @@ class SpotifyCLI:
         else:
             print_message("[i]", "Solo se mostro preview. No se aplicaron cambios.")
 
+    def _advanced_playlist_history(self) -> None:
+        print_section("Historial de playlists creadas")
+        print_playlist_history(self.playlist_history.list_entries(limit=20))
+
     @staticmethod
     def _prompt_positive_int(label: str) -> int:
         while True:
@@ -445,6 +462,31 @@ class SpotifyCLI:
         display_name = user.get("display_name") or user.get("id") or "Usuario"
         user_id = user.get("id", "spotify")
         print_session_badge(display_name, user_id)
+
+    def _print_recent_playlist_history(self) -> None:
+        entries = self.playlist_history.list_entries(limit=3)
+        if not entries:
+            return
+        print_playlist_history(entries)
+
+    def _record_playlist_history(
+        self,
+        source: str,
+        result: dict[str, Any],
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        entry: dict[str, Any] = {
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": source,
+            "playlist_name": result.get("playlist_name", ""),
+            "playlist_id": result.get("playlist_id", ""),
+            "playlist_url": result.get("playlist_url", ""),
+            "tracks_added": result.get("tracks_added", result.get("found_count", 0)),
+            "found_count": result.get("found_count", 0),
+        }
+        if extra:
+            entry.update(extra)
+        self.playlist_history.add_entry(entry)
 
     def _select_playlist(self, playlists: list[dict[str, Any]], title: str) -> dict[str, Any]:
         if len(playlists) == 1:
