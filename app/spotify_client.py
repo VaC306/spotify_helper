@@ -125,14 +125,22 @@ class SpotifyClient:
             return self.SCOPES.copy()
         scope_value = str(self._token_data.get("scope", "")).strip()
         if not scope_value:
-            return []
+            return self.SCOPES.copy()
         granted = set(scope_value.split())
         return [scope for scope in self.SCOPES if scope not in granted]
 
+    def get_granted_scopes(self) -> list[str]:
+        """Return granted scopes from the cached token, if known."""
+        if not self._token_data:
+            return []
+        scope_value = str(self._token_data.get("scope", "")).strip()
+        if not scope_value:
+            return []
+        return scope_value.split()
+
     def create_playlist(self, name: str, description: str = "") -> dict[str, Any]:
-        user = self.get_current_user()
         payload = {"name": name, "description": description, "public": False}
-        return self._request("POST", f"/users/{user['id']}/playlists", json_body=payload)
+        return self._request("POST", "/me/playlists", json_body=payload)
 
     def add_tracks_to_playlist(self, playlist_id: str, track_uris: list[str]) -> None:
         for start in range(0, len(track_uris), 100):
@@ -492,15 +500,24 @@ class SpotifyClient:
             )
 
         if response.status_code == 403:
-            playlist_endpoint = endpoint.startswith("/me/playlists") or endpoint.startswith("/playlists/")
+            playlist_endpoint = self._is_playlist_endpoint(endpoint)
             stats_endpoint = endpoint.startswith("/me/top/") or endpoint.startswith("/me/player/recently-played")
             if playlist_endpoint:
+                missing_scopes = self.get_missing_scopes()
+                granted_scopes = self.get_granted_scopes()
+                scope_hint = ""
+                if missing_scopes:
+                    scope_hint = " Scopes pendientes: " + ", ".join(missing_scopes) + "."
+                elif granted_scopes:
+                    scope_hint = " Scopes concedidos en la sesion actual: " + ", ".join(granted_scopes) + "."
                 message = (
                     f"{message}. Spotify denego el acceso a playlists. "
                     "Las causas mas comunes son: token antiguo sin scopes actualizados, "
-                    "falta de permisos concedidos o que tu cuenta no este habilitada en "
-                    "Spotify for Developers para esta app. Prueba a borrar `data/token_cache.json` "
-                    "y autenticarte de nuevo."
+                    "falta de permisos concedidos, que tu usuario no este en la allowlist "
+                    "de la app en Development Mode o que el owner de la app no tenga Spotify Premium. "
+                    "Prueba a borrar `data/token_cache.json` y autenticarte de nuevo. "
+                    "Ojo: poder iniciar sesion no garantiza permiso efectivo para crear playlists."
+                    f"{scope_hint}"
                 )
             elif stats_endpoint:
                 missing_scopes = self.get_missing_scopes()
@@ -519,6 +536,12 @@ class SpotifyClient:
                     "credenciales y que la cuenta tenga acceso a esta app en Spotify for Developers."
                 )
         raise SpotifyAPIError(message)
+
+    @staticmethod
+    def _is_playlist_endpoint(endpoint: str) -> bool:
+        if endpoint.startswith("/me/playlists") or endpoint.startswith("/playlists/"):
+            return True
+        return endpoint.startswith("/users/") and endpoint.endswith("/playlists")
 
     @staticmethod
     def _raise_auth_error(response: requests.Response) -> None:

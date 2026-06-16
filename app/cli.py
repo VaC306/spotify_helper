@@ -123,6 +123,17 @@ class SpotifyCLI:
 
     def _handle_create_playlist(self) -> None:
         print_section("Crear playlist desde TXT")
+        print_bullet_panel(
+            "Formato esperado del archivo TXT",
+            [
+                "Una cancion por linea.",
+                "Usa el formato exacto: Titulo - Artista.",
+                "Ejemplos: Bohemian Rhapsody - Queen | Viva La Vida - Coldplay | HUMBLE. - Kendrick Lamar.",
+                "No pongas numeracion, comillas ni texto extra en cada linea.",
+                "Las lineas que no sigan ese formato se marcaran como invalidas.",
+            ],
+            color="cyan",
+        )
         playlist_name = prompt_text("Nombre de la nueva playlist")
         txt_path = prompt_text("Ruta del archivo TXT")
 
@@ -409,12 +420,15 @@ class SpotifyCLI:
         tips = [
             "Usa la opcion 'Cerrar sesion de Spotify' del menu para borrar el token cacheado.",
             "Autoriza la app de nuevo cuando te lo pida.",
+            "Comprueba que tu usuario este anadido en la allowlist de la app si sigue en Development Mode.",
+            "Comprueba que el owner de la app tenga Spotify Premium si la app sigue en Development Mode.",
             "Revisa que tu cuenta tenga acceso a la app en Spotify for Developers.",
+            "Asegurate de conceder `playlist-modify-private` y `playlist-modify-public` para crear playlists.",
             "Confirma que el redirect URI del .env coincide exactamente con el del dashboard.",
         ]
         if "datos de estadisticas" in message:
             tips.insert(
-                2,
+                4,
                 "Asegurate de conceder los permisos `user-top-read`, `user-read-recently-played` y `user-read-private`.",
             )
 
